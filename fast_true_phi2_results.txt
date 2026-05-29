@@ -1,0 +1,8 @@
+GENERATED SUMMARY
+=================
+
+The appellant appealed against a lower court's decision that dismissed his writ petition. The lower court had ruled that the Supreme Court did not have jurisdiction over the matter, and that the appellant had to pay the respondent's litigation costs. The appellant argued that the Supreme Court had the power to grant relief under Article 32, and that the lower court had erred in its interpretation of the Constitution. The Supreme
+
+TRUE Score: 0.2057
+Hallucination Score: 0.7943
+Hallucination Rate: 79.43%

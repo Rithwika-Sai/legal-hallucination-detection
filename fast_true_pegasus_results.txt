@@ -1,0 +1,8 @@
+GENERATED SUMMARY
+=================
+
+The Supreme Court of India has dismissed an appeal filed by a Muslim community leader challenging a decision of the Delhi High Court to grant citizenship to a Muslim woman.
+
+TRUE Score: 0.2634
+Hallucination Score: 0.7366
+Hallucination Rate: 73.66%

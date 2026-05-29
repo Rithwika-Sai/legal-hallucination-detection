@@ -1,0 +1,8 @@
+GENERATED SUMMARY
+=================
+
+Appeal by special leave from the judgment and order dated November 8, 1957, of the Deputy Custodian General, Evacuee Property.
+
+SummaC Score: 0.9698
+Hallucination Score: 0.0302
+Hallucination Rate: 5.00%

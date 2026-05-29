@@ -1,0 +1,8 @@
+GENERATED SUMMARY
+=================
+
+The Supreme Court of India ruled that the appellant was not entitled to a writ petition.
+
+SummaC Score: 0.2551
+Hallucination Score: 0.7449
+Hallucination Rate: 74.49%

@@ -1,0 +1,8 @@
+GENERATED SUMMARY
+=================
+
+The appellant appealed to the Supreme Court from the High Court, but the Supreme Court dismissed the appeal on jurisdictional grounds and ordered the appellant to pay litigation costs. The Supreme Court also considered previous cases on the same issue and applied the same reasoning.
+
+SummaC Score: 0.2418
+Hallucination Score: 0.7582
+Hallucination Rate: 75.82%

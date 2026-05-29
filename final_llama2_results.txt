@@ -1,0 +1,8 @@
+GENERATED SUMMARY
+=================
+
+The appellants, who are displaced persons from West Pakistan, were granted quasi-permanent allot
+
+TRUE Score: 0.8644
+Hallucination Score: 0.1356
+Hallucination Rate: 13.56%

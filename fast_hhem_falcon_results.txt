@@ -1,0 +1,8 @@
+GENERATED SUMMARY
+=================
+
+The appeal was filed under Article 136 of the Constitution of
+
+Overall Faithfulness Score: 0.7882
+Hallucination Score: 0.2118
+Hallucination Rate: 21.18%

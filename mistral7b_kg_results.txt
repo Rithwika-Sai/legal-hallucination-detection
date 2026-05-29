@@ -1,0 +1,6 @@
+SUMMARY
+====================
+
+Summarize this legal judgment briefly: id : 0, judgment : Appeal No. 101 of 1959. Appeal by special leave from the judgment and order dated November 8, 1957, of the Deputy Custodian General, Evacuee Property, Now Delhi Revision Petition No. 17 R/55 of 1955. Achhru Ram and K. L. Mehta for the appellants. B.K., Khanna and, T. M. Sen, for the respondents. Judgment: The appeal is allowed. The judgment and order of the Deputy Custodian General, Evacuee Property, Now Delhi, dated November
+
+Hallucination Rate: 7.50%

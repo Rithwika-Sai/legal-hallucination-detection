@@ -1,0 +1,8 @@
+GENERATED SUMMARY
+=================
+
+Appeal by special leave from the judgment and order dated November 8, 1957, of the Deputy Custodian General, Evacuee Property, Now Delhi Revision Petition No. 17 R/55 of 1955 .
+
+SummaC Score: 0.6150
+Hallucination Score: 0.3850
+Hallucination Rate: 38.50%

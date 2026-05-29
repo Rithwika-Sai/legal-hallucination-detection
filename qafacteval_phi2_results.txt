@@ -1,0 +1,8 @@
+GENERATED SUMMARY
+=================
+
+The appellant sought to challenge a lower court order under Article 32 of the Constitution. The respondent argued that the court did not have the authority to hear the appeal. The Supreme Court rejected the appeal and ordered the appellant to pay the respondent's costs.
+
+Overall Faithfulness Score: 0.4375
+Hallucination Score: 0.5625
+Hallucination Rate: 56.25%

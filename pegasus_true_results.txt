@@ -1,0 +1,8 @@
+GENERATED SUMMARY
+=================
+
+Appeal by special leave from the judgment and order dated November 8, 1957, of the Deputy Custodian General, Evacuee Property, Now Delhi Revision Petition No
+
+Faithfulness Score: 0.8650
+Hallucination Score: 0.1350
+Hallucination Rate: 13.50%

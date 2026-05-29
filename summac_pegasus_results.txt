@@ -1,0 +1,8 @@
+GENERATED SUMMARY
+=================
+
+The Supreme Court of India has dismissed an appeal against a High Court order dismissing a writ petition challenging the validity of the controversial Shops and Establishments Bill.
+
+SummaC Score: 0.2417
+Hallucination Score: 0.7583
+Hallucination Rate: 75.83%

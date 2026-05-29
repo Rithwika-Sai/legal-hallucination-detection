@@ -1,0 +1,7 @@
+GENERATED SUMMARY
+=================
+
+The Punjab and Haryana High Court has ruled that a family from West Pakistan who were granted quasi permanent allotment of land in Ludhiana in 1949, should be given back the land.
+
+FEQA Score: 0.8000
+Hallucination Rate: 20.00%
