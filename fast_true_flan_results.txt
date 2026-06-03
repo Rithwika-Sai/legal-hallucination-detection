@@ -1,8 +1,0 @@
-GENERATED SUMMARY
-=================
-
-The High Court ruled that the appellant was not entitled to a writ petition.
-
-TRUE Score: 0.2519
-Hallucination Score: 0.7481
-Hallucination Rate: 74.81%

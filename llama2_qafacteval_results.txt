@@ -1,8 +1,0 @@
-GENERATED SUMMARY
-=================
-
-The appellants were granted quasi permanent allotment of 24 standard acres and 15 3/4 units in the village of Raikot in Ludhiana District in 1949. Their father, Sardar Nand Singh, was granted quasi permanent all
-
-Overall Faithfulness Score: 0.1449
-Hallucination Score: 0.8551
-Hallucination Rate: 85.00%

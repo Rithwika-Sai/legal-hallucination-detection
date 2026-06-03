@@ -1,8 +1,0 @@
-GENERATED SUMMARY
-=================
-
-The appellants, who are displaced persons from West Pakistan, were granted quasi permanent allotment of land in
-
-Overall Faithfulness Score: 0.1619
-Hallucination Score: 0.8381
-Hallucination Rate: 83.81%

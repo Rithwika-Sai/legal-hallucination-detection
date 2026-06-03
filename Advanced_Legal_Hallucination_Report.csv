@@ -1,2 +1,0 @@
-Model,Hallucination_Score,Flagged_Entities,New_Nouns_Detected,Status
-BART,6.57,['1949'],['appeal'],✅ PASS (Grounded)

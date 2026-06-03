@@ -1,8 +1,0 @@
-GENERATED SUMMARY
-=================
-
-The Supreme Court dismissed the appeal under Section 100 of the Code of Civil Procedure, holding that the appellant had failed to establish jurisdiction. The Court imposed litigation costs on the appellant, and the High Court had earlier dismissed the petition.
-
-TRUE Score: 0.2688
-Hallucination Score: 0.7312
-Hallucination Rate: 73.12%
