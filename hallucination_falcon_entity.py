@@ -1,400 +1,112 @@
-# =====================================================
-# FAST FALCON-7B HALLUCINATION DETECTION
-# OPTIMIZED FOR CPU LAPTOPS
-# =====================================================
-
-# =====================================================
-# INSTALL
-# =====================================================
-
-# pip install transformers
-# pip install torch
-# pip install accelerate
-# pip install sentencepiece
-# pip install spacy
-# pip install sentence-transformers
-
-# python -m spacy download en_core_web_sm
-
-# =====================================================
-# WARNINGS
-# =====================================================
-
-import warnings
-warnings.filterwarnings("ignore")
-
 import os
-
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
-
-# =====================================================
-# IMPORTS
-# =====================================================
-
-import torch
+import warnings
 import spacy
-
-from transformers import (
-
-    AutoTokenizer,
-
-    AutoModelForCausalLM
-)
-
-from sentence_transformers import (
-
-    SentenceTransformer,
-
-    util
-)
+import torch
+import pandas as pd
+from sentence_transformers import SentenceTransformer, CrossEncoder
+from rapidfuzz import process, fuzz
 
 # =====================================================
-# CPU OPTIMIZATION
+# 1. INITIALIZATION
 # =====================================================
+warnings.filterwarnings("ignore")
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-torch.set_num_threads(4)
-
-# =====================================================
-# LOAD SPACY
-# =====================================================
-
-print("\nLoading spaCy...\n")
-
+# Load Models (Ensure these are installed: spacy, sentence-transformers, rapidfuzz)
 nlp = spacy.load("en_core_web_sm")
+nli_model = CrossEncoder('cross-encoder/nli-deberta-v3-base')
 
 # =====================================================
-# LOAD FAST EMBEDDING MODEL
+# 2. EVALUATION FUNCTIONS
 # =====================================================
+def get_legal_entities(text):
+    doc = nlp(text)
+    # Focusing on high-stakes legal entities
+    target_labels = {"ORG", "PERSON", "GPE", "LAW", "DATE", "CARDINAL"}
+    return set([ent.text.strip() for ent in doc.ents if ent.label_ in target_labels])
 
-print("\nLoading Embedding Model...\n")
+def calculate_ultra_strict_hallucination(source_text, summary_text):
+    summary_doc = nlp(summary_text)
+    summary_sentences = [sent.text.strip() for sent in summary_doc.sents if len(sent.text) > 10]
+    
+    # Pre-extract source nouns (Limit source text for speed/memory)
+    source_nouns = set([t.text.lower() for t in nlp(source_text[:4000]) if t.pos_ == "NOUN"])
+    
+    sentence_risks = []
+    for sent in summary_sentences:
+        # 1. NLI Logic Check (Neutral + Contradiction = Risk)
+        nli_logits = nli_model.predict([(source_text[:3000], sent)])
+        probs = torch.softmax(torch.tensor(nli_logits), dim=1).tolist()[0]
+        non_entailment_risk = (probs[0] + probs[2]) * 100
+        
+        # 2. Noun Intrusion (New info not in source)
+        sent_nouns = set([t.text.lower() for t in nlp(sent) if t.pos_ == "NOUN"])
+        new_nouns = sent_nouns - source_nouns
+        noun_penalty = len(new_nouns) * 25 # High multiplier for strictness
+        
+        sentence_risks.append((0.6 * non_entailment_risk) + (0.4 * noun_penalty))
 
-embed_model = SentenceTransformer(
-    "all-MiniLM-L6-v2"
-)
-
-# =====================================================
-# LOAD FALCON-7B
-# =====================================================
-
-print("\nLoading Falcon-7B...\n")
-
-model_name = "tiiuae/falcon-7b-instruct"
-
-tokenizer = AutoTokenizer.from_pretrained(
-
-    model_name,
-
-    trust_remote_code=True
-)
-
-model = AutoModelForCausalLM.from_pretrained(
-
-    model_name,
-
-    trust_remote_code=True,
-
-    torch_dtype=torch.float32,
-
-    low_cpu_mem_usage=True
-)
-
-# =====================================================
-# IMPORTANT FIXES
-# =====================================================
-
-model.config.use_cache = False
-
-model.eval()
-
-tokenizer.pad_token = tokenizer.eos_token
-
-# =====================================================
-# READ SOURCE
-# =====================================================
-
-with open(
-
-    "data/test.json",
-
-    "r",
-
-    encoding="utf-8"
-
-) as f:
-
-    source = f.read()
+    # 3. Strict Entity Verification
+    source_ents = list(get_legal_entities(source_text[:50000]))
+    summary_ents = list(get_legal_entities(summary_text))
+    
+    unsupported_ents = []
+    for s_ent in summary_ents:
+        # Using fuzz.ratio for exact-match strictness
+        match = process.extractOne(s_ent, source_ents, scorer=fuzz.ratio)
+        if not match or match[1] < 98: 
+            unsupported_ents.append(s_ent)
+    
+    entity_hallucination_rate = (len(unsupported_ents) / len(summary_ents) * 100) if summary_ents else 0
+    avg_sentence_risk = sum(sentence_risks) / len(sentence_risks) if sentence_risks else 0
+    
+    # Weighting: Logic (70%) + Entities (30%)
+    final_score = (0.7 * avg_sentence_risk) + (0.3 * entity_hallucination_rate)
+    
+    return {"score": round(min(final_score, 100), 2), "flagged": unsupported_ents}
 
 # =====================================================
-# CLEAN SOURCE
+# 3. MAIN PROCESSING LOOP
 # =====================================================
-
-source = source.replace("\n", " ")
-
-source = " ".join(source.split())
-
-# =====================================================
-# VERY SMALL INPUT FOR SPEED
-# =====================================================
-
-source_document = source[:200]
-
-# =====================================================
-# PROMPT
-# =====================================================
-
-prompt = f"""
-Summarize briefly:
-
-{source_document}
-
-Summary:
-"""
-
-# =====================================================
-# TOKENIZE
-# =====================================================
-
-inputs = tokenizer(
-
-    prompt,
-
-    return_tensors="pt",
-
-    truncation=True,
-
-    max_length=256
-)
-
-# =====================================================
-# GENERATE SUMMARY
-# =====================================================
-
-print("\nGenerating Summary...\n")
-
-with torch.no_grad():
-
-    outputs = model.generate(
-
-        input_ids=inputs["input_ids"],
-
-        attention_mask=inputs["attention_mask"],
-
-        max_new_tokens=15,
-
-        do_sample=False,
-
-        use_cache=False,
-
-        num_beams=1,
-
-        early_stopping=True,
-
-        pad_token_id=tokenizer.eos_token_id
-    )
-
-# =====================================================
-# DECODE
-# =====================================================
-
-summary = tokenizer.decode(
-
-    outputs[0],
-
-    skip_special_tokens=True
-)
-
-# =====================================================
-# REMOVE PROMPT
-# =====================================================
-
-summary = summary.replace(
-    prompt,
-    ""
-)
-
-# =====================================================
-# CLEAN SUMMARY
-# =====================================================
-
-summary = summary.replace("\n", " ")
-
-summary = " ".join(summary.split())
-
-# =====================================================
-# EMPTY CHECK
-# =====================================================
-
-if len(summary.strip()) == 0:
-
-    summary = (
-        "The court reviewed the legal matter."
-    )
-
-# =====================================================
-# PRINT SUMMARY
-# =====================================================
-
-print("\n===== GENERATED SUMMARY =====\n")
-
-print(summary)
-
-# =====================================================
-# ENTITY EXTRACTION
-# =====================================================
-
-source_doc = nlp(source[:1500])
-
-summary_doc = nlp(summary)
-
-# =====================================================
-# ENTITY LISTS
-# =====================================================
-
-source_entities = set(
-
-    ent.text.lower()
-
-    for ent in source_doc.ents
-)
-
-summary_entities = set(
-
-    ent.text.lower()
-
-    for ent in summary_doc.ents
-)
-
-# =====================================================
-# UNSUPPORTED ENTITIES
-# =====================================================
-
-unsupported_entities = []
-
-for ent in summary_entities:
-
-    if ent not in source_entities:
-
-        unsupported_entities.append(ent)
-
-# =====================================================
-# ENTITY SCORE
-# =====================================================
-
-total_entities = len(summary_entities)
-
-if total_entities == 0:
-
-    entity_score = 0
-
+if not os.path.exists("data/test.json"):
+    print("❌ Error: data/test.json not found!")
 else:
+    with open("data/test.json", "r", encoding="utf-8") as f:
+        source_content = f.read()
 
-    entity_score = (
+    # Dictionary of models to check
+    models = {
+        "Mistral-7B": "outputs/mistral_output.txt",
+        "Falcon-7B": "outputs/falcon_output.txt"
+    }
 
-        len(unsupported_entities)
+    results_list = []
+    print(f"\n{'MODEL':<15} | {'ULTRA-STRICT HALLUCINATION SCORE':<35} | {'STATUS'}")
+    print("-" * 80)
 
-        / total_entities
+    for name, path in models.items():
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                summary = f.read().replace("\\n", " ")
+            
+            res = calculate_ultra_strict_hallucination(source_content, summary)
+            
+            # Threshold for Legal Fail: > 20%
+            status = "❌ FAIL" if res['score'] > 20 else "✅ PASS"
+            
+            print(f"{name:<15} | {res['score']:>32}% | {status}")
+            results_list.append({
+                "Model": name, 
+                "Score": res['score'], 
+                "Unsupported_Entities": ", ".join(res['flagged'])
+            })
+        else:
+            print(f"{name:<15} | ⚠️ File Missing: {path}")
 
-    ) * 100
-
-# =====================================================
-# FAST SEMANTIC SIMILARITY
-# =====================================================
-
-source_embedding = embed_model.encode(
-
-    source[:500],
-
-    convert_to_tensor=True
-)
-
-summary_embedding = embed_model.encode(
-
-    summary,
-
-    convert_to_tensor=True
-)
-
-semantic_similarity = util.cos_sim(
-
-    source_embedding,
-
-    summary_embedding
-
-).item()
-
-# =====================================================
-# SEMANTIC SCORE
-# =====================================================
-
-semantic_score = (
-
-    1 - semantic_similarity
-
-) * 100
-
-# =====================================================
-# FINAL HYBRID SCORE
-# =====================================================
-
-hallucination_score = (
-
-    0.5 * entity_score
-
-    +
-
-    0.5 * semantic_score
-)
-
-# =====================================================
-# OUTPUT
-# =====================================================
-
-print("\n")
-print("=" * 60)
-
-print(
-    f"\nEntity Hallucination Score: "
-    f"{entity_score:.2f}%"
-)
-
-print(
-    f"\nSemantic Hallucination Score: "
-    f"{semantic_score:.2f}%"
-)
-
-print(
-    f"\nFinal Hybrid Hallucination Score: "
-    f"{hallucination_score:.2f}%"
-)
-
-print("\nUnsupported Entities:\n")
-
-if len(unsupported_entities) == 0:
-
-    print("No unsupported entities found.")
-
-else:
-
-    for ent in unsupported_entities:
-
-        print("-", ent)
-
-print("\n")
-
-# =====================================================
-# RELAXED THRESHOLD
-# =====================================================
-
-if hallucination_score > 65:
-
-    print("Hallucination Detected")
-
-else:
-
-    print("Summary is Mostly Faithful")
-
-print("\nDONE SUCCESSFULLY\n")
+    # Save to CSV for your project report
+    if results_list:
+        pd.DataFrame(results_list).to_csv("Falcon_Mistral_Audit.csv", index=False)
+        print("\n[✔] Results saved to 'Falcon_Mistral_Audit.csv'")
 
 
 

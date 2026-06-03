@@ -1,207 +1,106 @@
-# =====================================================
-# HYBRID HALLUCINATION DETECTION
-# Entity Mismatch + Semantic Similarity
-# =====================================================
-
-# INSTALL:
-# pip install spacy sentence-transformers
-# python -m spacy download en_core_web_sm
-
-# =====================================================
-# SUPPRESS WARNINGS
-# =====================================================
-# =====================================================
-# IGNORE ALL WARNINGS & LOGS
-# =====================================================
-
-import warnings
-warnings.filterwarnings("ignore")
-
 import os
+import warnings
+import spacy
+import torch
+import pandas as pd
+from sentence_transformers import SentenceTransformer, CrossEncoder, util
+from rapidfuzz import process, fuzz
 
-# TensorFlow warnings
+# =====================================================
+# 1. SETUP
+# =====================================================
+warnings.filterwarnings("ignore")
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-# Transformers warnings
-from transformers import logging
-logging.set_verbosity_error()
-
-# Python warnings
-import logging as py_logging
-py_logging.disable(py_logging.CRITICAL)
-
-# =====================================================
-# IMPORTS
-# =====================================================
-
-import spacy
-
-from sentence_transformers import (
-    SentenceTransformer,
-    util
-)
-
-# =====================================================
-# LOAD MODELS
-# =====================================================
-
 nlp = spacy.load("en_core_web_sm")
-
-embed_model = SentenceTransformer(
-    'law-ai/InLegalBERT'
-)
+nli_model = CrossEncoder('cross-encoder/nli-deberta-v3-base')
+embed_model = SentenceTransformer('law-ai/InLegalBERT')
 
 # =====================================================
-# READ SOURCE DOCUMENT
+# 2. EVALUATION ENGINE (ULTRA-STRICT)
 # =====================================================
+def get_legal_entities(text):
+    doc = nlp(text)
+    target_labels = {"ORG", "PERSON", "GPE", "LAW", "DATE", "CARDINAL"}
+    return set([ent.text.strip() for ent in doc.ents if ent.label_ in target_labels])
 
-with open(
-    "data/test.json",
-    "r",
-    encoding="utf-8"
-) as f:
+def calculate_ultra_strict_hallucination(source_text, summary_text):
+    # --- A. SENTENCE-LEVEL LOGIC CHECK ---
+    summary_doc = nlp(summary_text)
+    summary_sentences = [sent.text.strip() for sent in summary_doc.sents if len(sent.text) > 10]
+    
+    # Pre-extract source context
+    source_nouns = set([t.text.lower() for t in nlp(source_text[:4000]) if t.pos_ == "NOUN"])
+    
+    sentence_risks = []
+    
+    for sent in summary_sentences:
+        # 1. Contradiction Prob
+        nli_logits = nli_model.predict([(source_text[:3000], sent)])
+        probs = torch.softmax(torch.tensor(nli_logits), dim=1).tolist()[0]
+        
+        # Penalize EVERYTHING that isn't Entailment (Label 1)
+        # If it's Neutral (Label 2) or Contradiction (Label 0), we treat it as a risk
+        non_entailment_risk = (probs[0] + probs[2]) * 100
+        
+        # 2. Strict Noun Intrusion (The Booster)
+        sent_nouns = set([t.text.lower() for t in nlp(sent) if t.pos_ == "NOUN"])
+        new_nouns = sent_nouns - source_nouns
+        # Heavy penalty: Every new noun is an unverified "fact"
+        noun_penalty = len(new_nouns) * 25 
+        
+        sentence_risks.append((0.6 * non_entailment_risk) + (0.4 * noun_penalty))
 
-    source = f.read()
+    # --- B. ZERO-TOLERANCE ENTITY MATCHING ---
+    source_ents = list(get_legal_entities(source_text[:50000]))
+    summary_ents = list(get_legal_entities(summary_text))
+    
+    unsupported_ents = []
+    for s_ent in summary_ents:
+        # fuzz.ratio is the strictest: "Supreme Court" vs "The Court" will FAIL.
+        match = process.extractOne(s_ent, source_ents, scorer=fuzz.ratio)
+        if not match or match[1] < 98: # 98% is practically an exact match
+            unsupported_ents.append(s_ent)
+    
+    entity_hallucination_rate = (len(unsupported_ents) / len(summary_ents) * 100) if summary_ents else 0
 
-# =====================================================
-# READ GENERATED SUMMARY
-# =====================================================
-
-with open(
-    "outputs/bart_output.txt",
-    "r",
-    encoding="utf-8"
-) as f:
-
-    summary = f.read()
-
-# =====================================================
-# CLEAN SUMMARY
-# =====================================================
-
-summary = summary.replace("\\n", " ")
-
-# =====================================================
-# PRINT SUMMARY
-# =====================================================
-
-print("\n===== SUMMARY =====\n")
-
-print(summary)
-
-# =====================================================
-# ENTITY EXTRACTION
-# =====================================================
-
-source_doc = nlp(source[:50000])
-
-summary_doc = nlp(summary)
-
-# =====================================================
-# GET ENTITIES
-# =====================================================
-
-source_entities = set(
-
-    ent.text.lower()
-
-    for ent in source_doc.ents
-)
-
-summary_entities = set(
-
-    ent.text.lower()
-
-    for ent in summary_doc.ents
-)
+    # --- C. FINAL AGGREGATION ---
+    avg_sentence_risk = sum(sentence_risks) / len(sentence_risks) if sentence_risks else 0
+    
+    # Final weighting
+    final_score = (0.7 * avg_sentence_risk) + (0.3 * entity_hallucination_rate)
+    
+    return {
+        "score": round(min(final_score, 100), 2),
+        "flagged": unsupported_ents
+    }
 
 # =====================================================
-# FIND UNSUPPORTED ENTITIES
+# 3. EXECUTION LOOP
 # =====================================================
+with open("data/test.json", "r", encoding="utf-8") as f:
+    source_content = f.read()
 
-unsupported_entities = []
+models = {
+    "BART": "outputs/bart_output.txt",
+}
 
-for ent in summary_entities:
+results_list = []
+print(f"\n{'MODEL':<15} | {'ULTRA-STRICT HALLUCINATION SCORE':<35} | {'STATUS'}")
+print("-" * 80)
 
-    if ent not in source_entities:
+for name, path in models.items():
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            summary = f.read().replace("\\n", " ")
+        
+        res = calculate_ultra_strict_hallucination(source_content, summary)
+        status = "❌ FAIL" if res['score'] > 20 else "✅ PASS"
+        
+        print(f"{name:<15} | {res['score']:>32}% | {status}")
+        results_list.append({"Model": name, "Score": res['score'], "Flagged": res['flagged']})
+    else:
+        print(f"{name:<15} | File Missing")
 
-        unsupported_entities.append(ent)
-
-# =====================================================
-# ENTITY HALLUCINATION SCORE
-# =====================================================
-
-total_entities = len(summary_entities)
-
-if total_entities == 0:
-
-    entity_score = 0
-
-else:
-
-    entity_score = (
-
-        len(unsupported_entities)
-
-        / total_entities
-
-    ) * 100
-
-# =====================================================
-# SEMANTIC SIMILARITY
-# =====================================================
-
-source_embedding = embed_model.encode(
-    source[:5000],
-    convert_to_tensor=True
-)
-
-summary_embedding = embed_model.encode(
-    summary,
-    convert_to_tensor=True
-)
-
-similarity = util.cos_sim(
-    source_embedding,
-    summary_embedding
-)
-
-semantic_similarity = similarity.item()
-
-# =====================================================
-# SEMANTIC HALLUCINATION SCORE
-# =====================================================
-
-semantic_score = (
-    1 - semantic_similarity
-) * 100
-
-# =====================================================
-# FINAL HYBRID SCORE
-# =====================================================
-
-hallucination_score = (
-
-    0.5 * entity_score
-
-    +
-
-    0.5 * semantic_score
-)
-
-# =====================================================
-# FINAL OUTPUT
-# =====================================================
-
-print(
-    f"\nHallucination Score: "
-    f"{hallucination_score:.2f}%"
-)
-
-if hallucination_score > 0:
-
-    print("Hallucination Detected")
-
-else:
-
-    print("No Hallucination")
+# Export
+pd.DataFrame(results_list).to_csv("Ultra_Strict_Report.csv", index=False)

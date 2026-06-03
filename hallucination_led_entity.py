@@ -1,321 +1,106 @@
-# =========================================================
-# FINAL HYBRID QA + NLI HALLUCINATION DETECTOR
-# =========================================================
-# Features:
-# ✅ QA + NLI combined
-# ✅ Avoids 0% and 100%
-# ✅ Soft hallucination scoring
-# ✅ Handles long legal docs
-# ✅ CPU-friendly
-# ✅ Prints ONLY summary + hall rate
-# =========================================================
-
-# =========================================================
-# HIDE WARNINGS
-# =========================================================
-
 import os
 import warnings
+import spacy
+import torch
+import pandas as pd
+from sentence_transformers import SentenceTransformer, CrossEncoder, util
+from rapidfuzz import process, fuzz
 
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
-
-warnings.filterwarnings("ignore")
-
-# =========================================================
-# IMPORTS
-# =========================================================
-
-import nltk
-import numpy as np
-
-from transformers import pipeline
-from transformers.utils import logging
-
-from sentence_transformers import (
-    SentenceTransformer,
-    util
-)
-
-# Hide transformer warnings
-logging.set_verbosity_error()
-
-# =========================================================
-# DOWNLOAD TOKENIZER
-# =========================================================
-
-nltk.download('punkt', quiet=True)
-
-# =========================================================
-# LOAD MODELS
-# =========================================================
-
-# Embedding model
-embed_model = SentenceTransformer(
-    'law-ai/InLegalBERT'
-)
-
-# NLI model
-nli_model = pipeline(
-    "text-classification",
-    model="facebook/bart-large-mnli",
-    device=-1
-)
-
-# QA model
-qa_model = pipeline(
-    "question-answering",
-    model="deepset/roberta-base-squad2",
-    device=-1
-)
-
-# =========================================================
-# READ SOURCE DOCUMENT
-# =========================================================
-
-with open("data/test.json", "r", encoding="utf-8") as f:
-    source = f.read()
-
-# =========================================================
-# READ GENERATED SUMMARY
-# =========================================================
-
-with open("outputs/led_output.txt", "r", encoding="utf-8") as f:
-    summary = f.read()
-
-# =========================================================
-# LIMIT HUGE LEGAL DOCUMENT
-# =========================================================
-
-source = source[:50000]
-
-# =========================================================
-# SPLIT INTO SENTENCES
-# =========================================================
-
-source_sentences = nltk.sent_tokenize(source)
-
-summary_sentences = nltk.sent_tokenize(summary)
-
-# =========================================================
-# ENCODE SOURCE SENTENCES
-# =========================================================
-
-source_embeddings = embed_model.encode(
-    source_sentences,
-    convert_to_tensor=True
-)
-
-# =========================================================
-# SIMPLE QUESTION GENERATOR
-# =========================================================
-
-def generate_question(sentence):
-
-    sentence = sentence.lower()
-
-    if "court" in sentence:
-        return "What did the court decide?"
-
-    elif "appeal" in sentence:
-        return "What happened to the appeal?"
-
-    elif "section" in sentence:
-        return "Which section is mentioned?"
-
-    elif "article" in sentence:
-        return "Which article is mentioned?"
-
-    elif "petition" in sentence:
-        return "What petition is discussed?"
-
-    else:
-        return "What is stated?"
-
-# =========================================================
-# HALLUCINATION SCORE
-# =========================================================
-
-hallucinated = 0
-
-# =========================================================
-# MAIN LOOP
-# =========================================================
-
-for sent in summary_sentences:
-
-    # Skip very tiny sentences
-    if len(sent.strip()) < 15:
-        continue
-
-    # -----------------------------------------------------
-    # EMBEDDING
-    # -----------------------------------------------------
-
-    sent_embedding = embed_model.encode(
-        sent,
-        convert_to_tensor=True
-    )
-
-    # -----------------------------------------------------
-    # RETRIEVAL
-    # -----------------------------------------------------
-
-    similarities = util.cos_sim(
-        sent_embedding,
-        source_embeddings
-    )
-
-    similarities = similarities.cpu().numpy()[0]
-
-    top_k = 3
-
-    top_indices = similarities.argsort()[-top_k:][::-1]
-
-    evidence_sentences = [
-        source_sentences[i]
-        for i in top_indices
-    ]
-
-    # -----------------------------------------------------
-    # NLI CHECK
-    # -----------------------------------------------------
-
-    entailment_found = False
-    contradiction_found = False
-
-    for evidence in evidence_sentences:
-
-        evidence = evidence[:300]
-
-        short_sent = sent[:180]
-
-        result = nli_model(
-            f"{evidence} </s></s> {short_sent}",
-            truncation=True,
-            max_length=512
-        )[0]
-
-        label = result['label']
-
-        confidence = result['score']
-
-        # ---------------------------------------------
-        # ENTAILMENT
-        # ---------------------------------------------
-
-        if (
-            label == "ENTAILMENT"
-            and confidence > 0.25
-        ):
-
-            entailment_found = True
-
-        # ---------------------------------------------
-        # CONTRADICTION
-        # ---------------------------------------------
-
-        if (
-            label == "CONTRADICTION"
-            and confidence > 0.80
-        ):
-
-            contradiction_found = True
-
-    # -----------------------------------------------------
-    # QA CHECK
-    # -----------------------------------------------------
-
-    question = generate_question(sent)
-
-    context = " ".join(evidence_sentences)
-
-    context = context[:400]
-
-    qa_result = qa_model(
-        question=question,
-        context=context
-    )
-
-    answer = qa_result['answer']
-
-    qa_conf = qa_result['score']
-
-    # -----------------------------------------------------
-    # QA SEMANTIC MATCH
-    # -----------------------------------------------------
-
-    answer_embedding = embed_model.encode(
-        answer,
-        convert_to_tensor=True
-    )
-
-    answer_score = util.cos_sim(
-        answer_embedding,
-        sent_embedding
-    ).item()
-
-    # =====================================================
-    # SOFT HALLUCINATION SCORE
-    # =====================================================
-
-    sentence_score = 0
-
-    # Strong contradiction
-    # =====================================================
-# DYNAMIC HALLUCINATION SCORING
 # =====================================================
+# 1. SETUP
+# =====================================================
+warnings.filterwarnings("ignore")
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-# Strong contradiction
-    if contradiction_found:
+nlp = spacy.load("en_core_web_sm")
+nli_model = CrossEncoder('cross-encoder/nli-deberta-v3-base')
+embed_model = SentenceTransformer('law-ai/InLegalBERT')
 
-        sentence_score += confidence
+# =====================================================
+# 2. EVALUATION ENGINE (ULTRA-STRICT)
+# =====================================================
+def get_legal_entities(text):
+    doc = nlp(text)
+    target_labels = {"ORG", "PERSON", "GPE", "LAW", "DATE", "CARDINAL"}
+    return set([ent.text.strip() for ent in doc.ents if ent.label_ in target_labels])
 
-# Weak/no entailment
-    if not entailment_found:
+def calculate_ultra_strict_hallucination(source_text, summary_text):
+    # --- A. SENTENCE-LEVEL LOGIC CHECK ---
+    summary_doc = nlp(summary_text)
+    summary_sentences = [sent.text.strip() for sent in summary_doc.sents if len(sent.text) > 10]
+    
+    # Pre-extract source context
+    source_nouns = set([t.text.lower() for t in nlp(source_text[:4000]) if t.pos_ == "NOUN"])
+    
+    sentence_risks = []
+    
+    for sent in summary_sentences:
+        # 1. Contradiction Prob
+        nli_logits = nli_model.predict([(source_text[:3000], sent)])
+        probs = torch.softmax(torch.tensor(nli_logits), dim=1).tolist()[0]
+        
+        # Penalize EVERYTHING that isn't Entailment (Label 1)
+        # If it's Neutral (Label 2) or Contradiction (Label 0), we treat it as a risk
+        non_entailment_risk = (probs[0] + probs[2]) * 100
+        
+        # 2. Strict Noun Intrusion (The Booster)
+        sent_nouns = set([t.text.lower() for t in nlp(sent) if t.pos_ == "NOUN"])
+        new_nouns = sent_nouns - source_nouns
+        # Heavy penalty: Every new noun is an unverified "fact"
+        noun_penalty = len(new_nouns) * 25 
+        
+        sentence_risks.append((0.6 * non_entailment_risk) + (0.4 * noun_penalty))
 
-        sentence_score += (1 - confidence) * 0.4
+    # --- B. ZERO-TOLERANCE ENTITY MATCHING ---
+    source_ents = list(get_legal_entities(source_text[:50000]))
+    summary_ents = list(get_legal_entities(summary_text))
+    
+    unsupported_ents = []
+    for s_ent in summary_ents:
+        # fuzz.ratio is the strictest: "Supreme Court" vs "The Court" will FAIL.
+        match = process.extractOne(s_ent, source_ents, scorer=fuzz.ratio)
+        if not match or match[1] < 98: # 98% is practically an exact match
+            unsupported_ents.append(s_ent)
+    
+    entity_hallucination_rate = (len(unsupported_ents) / len(summary_ents) * 100) if summary_ents else 0
 
-# QA uncertainty
-    sentence_score += (1 - qa_conf) * 0.2
+    # --- C. FINAL AGGREGATION ---
+    avg_sentence_risk = sum(sentence_risks) / len(sentence_risks) if sentence_risks else 0
+    
+    # Final weighting
+    final_score = (0.7 * avg_sentence_risk) + (0.3 * entity_hallucination_rate)
+    
+    return {
+        "score": round(min(final_score, 100), 2),
+        "flagged": unsupported_ents
+    }
 
-# Semantic mismatch
-    sentence_score += (1 - answer_score) * 0.2
+# =====================================================
+# 3. EXECUTION LOOP
+# =====================================================
+with open("data/test.json", "r", encoding="utf-8") as f:
+    source_content = f.read()
 
-# VERY weak semantic match only
-    if answer_score < 0.10:
+models = {
+    "LED": "outputs/led_output.txt"
+}
 
-        sentence_score += 0.10
+results_list = []
+print(f"\n{'MODEL':<15} | {'ULTRA-STRICT HALLUCINATION SCORE':<35} | {'STATUS'}")
+print("-" * 80)
 
-    # Limit score
-    sentence_score = min(sentence_score, 1.0)
+for name, path in models.items():
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            summary = f.read().replace("\\n", " ")
+        
+        res = calculate_ultra_strict_hallucination(source_content, summary)
+        status = "❌ FAIL" if res['score'] > 20 else "✅ PASS"
+        
+        print(f"{name:<15} | {res['score']:>32}% | {status}")
+        results_list.append({"Model": name, "Score": res['score'], "Flagged": res['flagged']})
+    else:
+        print(f"{name:<15} | File Missing")
 
-    # Add to total
-    hallucinated += sentence_score
-
-# =========================================================
-# FINAL HALLUCINATION RATE
-# =========================================================
-
-total_sentences = len(summary_sentences)
-
-hallucination_rate = (
-    hallucinated / total_sentences
-) * 100
-
-# =========================================================
-# PRINT OUTPUT
-# =========================================================
-
-print("\n==============================")
-print("SUMMARY")
-print("==============================\n")
-
-print(summary)
-
-print("\n==============================")
-print(
-    f"HALLUCINATION RATE: "
-    f"{hallucination_rate:.2f}%"
-)
-print("==============================")
+# Export
+pd.DataFrame(results_list).to_csv("Ultra_Strict_Report.csv", index=False)

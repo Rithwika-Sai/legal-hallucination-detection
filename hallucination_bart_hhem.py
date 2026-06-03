@@ -80,7 +80,7 @@ model = BartForConditionalGeneration.from_pretrained(
 
 
 # =========================================================
-# LOAD FAST NLI MODEL
+# LOAD  NLI MODEL
 # =========================================================
 
 print("\nLoading NLI model...\n")
