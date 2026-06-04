@@ -82,7 +82,7 @@ with open("data/test.json", "r", encoding="utf-8") as f:
     source_content = f.read()
 
 models = {
-    "LED": "outputs/led_output.txt"
+    "LED": "outputs/led_output.txt",
 }
 
 results_list = []
