@@ -1,0 +1,6 @@
+model,first_hall_%,middle_hall_%,last_hall_%,first_avg_score,middle_avg_score,last_avg_score,total_sentences,total_hallucinated
+BART,0.0,50.0,0.0,0.5282,0.3988,0.5051,6,2
+LED,100.0,66.67,100.0,0.4367,0.2695,0.3218,5,4
+PEGASUS,100.0,,,0.0999,,,1,1
+MISTRAL-7B,0.0,100.0,100.0,0.6426,0.3017,0.1308,6,5
+FALCON-7B,100.0,100.0,100.0,0.0409,0.1199,0.1539,3,3

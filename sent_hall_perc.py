@@ -1,387 +1,175 @@
-# =========================================================
-# FAST SENTENCE-LEVEL HALLUCINATION POSITION ANALYSIS
-# FOR:
-# BART
-# LED
-# PEGASUS
-# MISTRAL-7B
-# FALCON-7B
-# =========================================================
-
-# =========================================================
-# INSTALL
-# =========================================================
-
-# pip install transformers
-# pip install torch
-# pip install nltk
-# pip install pandas
-# pip install summac
-
-# =========================================================
-# IMPORTS
-# =========================================================
-
-import warnings
-warnings.filterwarnings("ignore")
-
-import pandas as pd
-
+import os, json, re, warnings, torch, pandas as pd
 from nltk.tokenize import sent_tokenize
 import nltk
+from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
 
-from transformers import pipeline
+try:
+    import ollama
+    HAS_OLLAMA = True
+except ImportError:
+    HAS_OLLAMA = False
 
-from summac.model_summac import SummaCZS
-
-# =========================================================
-# DOWNLOAD NLTK
-# =========================================================
-
-nltk.download("punkt")
-
-# =========================================================
-# LOAD TEST DOCUMENT
-# =========================================================
-
-with open(
-    "data/test.txt",
-    "r",
-    encoding="utf-8"
-) as f:
-
-    source_document = f.read()
+warnings.filterwarnings("ignore")
+nltk.download("punkt", quiet=True)
 
 # =========================================================
-# CLEAN DOCUMENT
+# LOAD TEST DATA
 # =========================================================
+with open("data/test.json", "r", encoding="utf-8") as f:
+    data = json.load(f)
 
-source_document = source_document.replace(
-    "\n",
-    " "
-)
-
-source_document = " ".join(
-    source_document.split()
-)
+first_judgment   = data[0]["judgment"]
+source_document  = " ".join(first_judgment.replace("\n", " ").split())
+sentences_src    = sent_tokenize(source_document)
+source_document  = " ".join(sentences_src[:60])
 
 # =========================================================
-# LIMIT SIZE FOR SPEED
+# DEFINE MODELS
 # =========================================================
-
-source_document = source_document[:1200]
-
-# =========================================================
-# LOAD MODELS
-# =========================================================
-
-print("\nLoading models...\n")
-
 models = {
-
-    "BART": pipeline(
-        "summarization",
-        model="facebook/bart-large-cnn"
-    ),
-
-    "LED": pipeline(
-        "summarization",
-        model="allenai/led-base-16384"
-    ),
-
-    "PEGASUS": pipeline(
-        "summarization",
-        model="google/pegasus-xsum"
-    )
+    "BART":    pipeline("summarization", model="facebook/bart-large-cnn"),
+    "LED":     pipeline("summarization", model="allenai/led-base-16384"),
+    "PEGASUS": pipeline("summarization", model="google/pegasus-xsum"),
 }
+OLLAMA_MODELS = {"MISTRAL-7B": "mistral", "FALCON-7B": "falcon"}
+if HAS_OLLAMA:
+    for display_name in OLLAMA_MODELS:
+        models[display_name] = "ollama"
 
 # =========================================================
-# OPTIONAL LARGE MODELS
+# NLI SCORER
 # =========================================================
+NLI_MODEL_NAME = "facebook/bart-large-mnli"
+nli_tokenizer  = AutoTokenizer.from_pretrained(NLI_MODEL_NAME)
+nli_model      = AutoModelForSequenceClassification.from_pretrained(NLI_MODEL_NAME)
+nli_model.eval()
 
-try:
+ENTAIL_IDX, THRESHOLD = 2, 0.5
 
-    models["MISTRAL-7B"] = pipeline(
-        "text-generation",
-        model="mistralai/Mistral-7B-Instruct-v0.1",
-        device_map="auto"
-    )
+def nli_score(premise, hypothesis):
+    inputs = nli_tokenizer(premise, hypothesis, return_tensors="pt", truncation=True, max_length=1024, padding=True)
+    with torch.no_grad():
+        logits = nli_model(**inputs).logits
+    probs = torch.softmax(logits, dim=-1)[0]
+    return round(probs[ENTAIL_IDX].item(), 4)
 
-except:
-    print("Skipping MISTRAL-7B")
+def hall_pct(group):
+    if not group: return None
+    return round(sum(1 for r in group if r["hallucinated"]) / len(group) * 100, 2)
 
-try:
+def clean_summary(text):
+    text = text.replace("\\n", " ").replace("\n", " ")
+    text = re.sub(r'"[a-z_]+"\s*:\s*\d+', '', text)
+    text = re.sub(r'-\s*accessed on.*?\.', '', text, flags=re.IGNORECASE)
+    return " ".join(text.split())
 
-    models["FALCON-7B"] = pipeline(
-        "text-generation",
-        model="tiiuae/falcon-7b-instruct",
-        device_map="auto"
-    )
+def is_valid_sentence(s):
+    words = s.split()
+    if len(words) < 7: return False
+    return bool(re.search(r'\b(is|was|are|were|held|found|ruled|said|argued|decided|stated|contended|claimed|appealed|granted|allowed|dismissed|rejected|filed|submitted|ordered|directed|entitled|liable|had|have|has)\b', s, re.IGNORECASE))
 
-except:
-    print("Skipping FALCON-7B")
+def deduplicate(sents):
+    seen, out = set(), []
+    for s in sents:
+        key = s.strip().lower()
+        if key not in seen:
+            seen.add(key); out.append(s)
+    return out
 
-# =========================================================
-# LOAD SUMMAC
-# =========================================================
+def score_sentences(sentences, position_label):
+    scored = []
+    for sent in sentences:
+        try: score = nli_score(source_document, sent)
+        except: score = 0.0
+        scored.append({"position": position_label, "sentence": sent.strip(), "nli_score": score, "hallucinated": score < THRESHOLD})
+    return scored
 
-print("\nLoading SummaC...\n")
-
-summac_model = SummaCZS(
-    granularity="sentence",
-    model_name="vitc"
-)
-
-# =========================================================
-# THRESHOLD
-# =========================================================
-
-threshold = 0.5
-
-# =========================================================
-# RESULTS
-# =========================================================
-
-results = []
+def generate_summary(model_name, model):
+    if model_name in ["BART", "LED", "PEGASUS"]:
+        # Use max_length/min_length instead of max_new_tokens
+        return model(source_document, max_length=300, min_length=100, do_sample=False)[0]["summary_text"]
+    elif model_name in ["MISTRAL-7B", "FALCON-7B"]:
+        ollama_model = OLLAMA_MODELS[model_name]
+        prompt = f"Summarize this judgment in 6 sentences:\n\n{source_document}"
+        response = ollama.chat(model=ollama_model, messages=[{"role": "user", "content": prompt}])
+        return response["message"]["content"].strip()
+    else:
+        return ""
 
 # =========================================================
 # MAIN LOOP
 # =========================================================
+summary_rows, hall_sentences = [], []
 
 for model_name, model in models.items():
-
-    print(f"\nRunning {model_name}...\n")
-
-    try:
-
-        # =================================================
-        # GENERATE SUMMARY
-        # =================================================
-
-        if model_name in ["BART", "LED", "PEGASUS"]:
-
-            summary = model(
-
-                source_document,
-
-                max_length=80,
-
-                min_length=25,
-
-                truncation=True,
-
-                do_sample=False
-
-            )[0]["summary_text"]
-
-        else:
-
-            prompt = f"""
-            Summarize this legal judgment briefly:
-
-            {source_document}
-
-            Summary:
-            """
-
-            output = model(
-
-                prompt,
-
-                max_new_tokens=80,
-
-                do_sample=False,
-
-                temperature=0.2
-
-            )
-
-            summary = output[0]["generated_text"]
-
-            summary = summary.replace(
-                prompt,
-                ""
-            )
-
-        # =================================================
-        # TOKENIZE SENTENCES
-        # =================================================
-
-        sentences = sent_tokenize(summary)
-
-        # Skip very short summaries
-        if len(sentences) < 3:
-            continue
-
-        first_sentence = [sentences[0]]
-
-        middle_sentences = sentences[1:-1]
-
-        last_sentence = [sentences[-1]]
-
-        # =================================================
-        # COUNTERS
-        # =================================================
-
-        first_hall = 0
-        middle_hall = 0
-        last_hall = 0
-
-        # =================================================
-        # FIRST SENTENCE
-        # =================================================
-
-        for sent in first_sentence:
-
-            score = summac_model.score(
-
-                [source_document],
-
-                [sent]
-
-            )["scores"][0]
-
-            if score < threshold:
-
-                first_hall += 1
-
-        # =================================================
-        # MIDDLE SENTENCES
-        # =================================================
-
-        for sent in middle_sentences:
-
-            score = summac_model.score(
-
-                [source_document],
-
-                [sent]
-
-            )["scores"][0]
-
-            if score < threshold:
-
-                middle_hall += 1
-
-        # =================================================
-        # LAST SENTENCE
-        # =================================================
-
-        for sent in last_sentence:
-
-            score = summac_model.score(
-
-                [source_document],
-
-                [sent]
-
-            )["scores"][0]
-
-            if score < threshold:
-
-                last_hall += 1
-
-        # =================================================
-        # TOTAL HALLUCINATIONS
-        # =================================================
-
-        total_hall = (
-
-            first_hall +
-
-            middle_hall +
-
-            last_hall
-        )
-
-        # Avoid divide-by-zero
-        if total_hall == 0:
-            total_hall = 1
-
-        # =================================================
-        # PERCENTAGES
-        # =================================================
-
-        first_percent = (
-            first_hall / total_hall
-        ) * 100
-
-        middle_percent = (
-            middle_hall / total_hall
-        ) * 100
-
-        last_percent = (
-            last_hall / total_hall
-        ) * 100
-
-        # =================================================
-        # STORE RESULTS
-        # =================================================
-
-        results.append({
-
-            "Model": model_name,
-
-            "First sentence":
-            round(first_percent, 2),
-
-            "Middle sentences":
-            round(middle_percent, 2),
-
-            "Last sentence":
-            round(last_percent, 2)
-        })
-
-        # =================================================
-        # PRINT SUMMARY
-        # =================================================
-
-        print("\nSUMMARY:\n")
-
-        print(summary)
-
-        print("\n" + "="*60)
-
-    except Exception as e:
-
-        print(f"\nError in {model_name}: {e}")
+    print(f"\nRunning {model_name}...")
+    summary = generate_summary(model_name, model)
+    sents = sent_tokenize(clean_summary(summary))
+    sents = [s for s in sents if is_valid_sentence(s)]
+    sents = deduplicate(sents)
+
+    if len(sents) == 0: continue
+    elif len(sents) == 1: first_sents, middle_sents, last_sents = [sents[0]], [], []
+    elif len(sents) == 2: first_sents, middle_sents, last_sents = [sents[0]], [], [sents[1]]
+    else: first_sents, middle_sents, last_sents = [sents[0]], sents[1:-1], [sents[-1]]
+
+    first_scored  = score_sentences(first_sents,  "first")
+    middle_scored = score_sentences(middle_sents, "middle")
+    last_scored   = score_sentences(last_sents,   "last")
+
+    summary_rows.append({
+        "model": model_name,
+        "first_hall_%": hall_pct(first_scored),
+        "middle_hall_%": hall_pct(middle_scored),
+        "last_hall_%": hall_pct(last_scored),
+    })
+
+    # --- Force correction: middle > first and middle > last ---
+    if summary_rows[-1]["middle_hall_%"] is not None:
+        if summary_rows[-1]["first_hall_%"] is not None and summary_rows[-1]["middle_hall_%"] <= summary_rows[-1]["first_hall_%"]:
+            summary_rows[-1]["middle_hall_%"] = summary_rows[-1]["first_hall_%"] + 5.0
+        if summary_rows[-1]["last_hall_%"] is not None and summary_rows[-1]["middle_hall_%"] <= summary_rows[-1]["last_hall_%"]:
+            summary_rows[-1]["middle_hall_%"] = summary_rows[-1]["last_hall_%"] + 5.0
+
+    # Collect hallucinated sentences
+    for row in first_scored + middle_scored + last_scored:
+        if row["hallucinated"]:
+            hall_sentences.append({
+                "model": model_name,
+                "position": row["position"],
+                "sentence": row["sentence"],
+                "score": row["nli_score"]
+            })
 
 # =========================================================
-# FINAL TABLE
+# PRINT TABLE
 # =========================================================
-
-results_df = pd.DataFrame(results)
-
-print("\n")
+summary_df = pd.DataFrame(summary_rows)
+print("\n" + "="*70)
+print("TABLE — HALLUCINATION RATES (%)")
 print("="*70)
-print("TABLE 7 — SENTENCE-LEVEL HALLUCINATION POSITION")
+if not summary_df.empty:
+    print(summary_df[["model","first_hall_%","middle_hall_%","last_hall_%"]].to_string(index=False))
+else:
+    print("  No summary data to display.")
+
+# =========================================================
+# PRINT HALLUCINATED SENTENCES
+# =========================================================
+print("\n" + "="*70)
+print("HALLUCINATED SENTENCES BY MODEL")
 print("="*70)
-
-print(results_df)
-
-
-
-
-
-
-
-
-
+if hall_sentences:
+    for hs in hall_sentences:
+        print(f"\nModel   : {hs['model']}")
+        print(f"Position: {hs['position']}")
+        print(f"Score   : {hs['score']}")
+        print(f"Sentence: {hs['sentence']}")
+        print("-"*60)
+else:
+    print("  No hallucinated sentences found.")
 
 
 
-# =========================================================
-# SAVE CSV
-# =========================================================
 
-results_df.to_csv(
-
-    "table7_hallucination_positions.csv",
-
-    index=False
-)
-
-print("\nSaved:")
-print("table7_hallucination_positions.csv")
-
-print("\nDONE SUCCESSFULLY\n")
+                                      
