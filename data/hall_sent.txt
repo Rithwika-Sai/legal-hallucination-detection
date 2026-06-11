@@ -1,0 +1,27 @@
+BARTmiddleThe appellants who are admittedly displaced persons from West Pakistan were granted quasi permanent allotment of 24 standard acres and 15 3/4 units in the village of Raikot in Ludhiana District in 1949
+BARTlastTheir father Sardar Nand Singh who was 42 330 found entitled to quasi Permanent allotment of 40 standard acres and 5 1/4 units of land was given quasipermanent allotment in another village named Humbran in the same district.
+LEDmiddleIt is true that under section 10 of the Act and Section 12(1) of the Act which was passed by the High Court dated November 8, 1951, the appellants were entitled to apply as far as they could be located within the jurisdiction of the Government of Punjab.
+LEDmiddleOn the other hand, it is not clear whether the appellants have any right to apply for relief from the burden of proof.
+LEDmiddleIf so, we can only say that the matter has been referred to the High Court whereupon there is no objection to the applicability of the law.
+LEDmiddleWe cannot accept the arguments made by Mr. Achhruram at this stage.
+LEDlastHe contends that he had no intention of applying for relief due to the circumstances of the case.
+PEGASUSfirstThe Punjab and Haryana High Court has ruled that the Deputy Custodian General, Evacuee Property, Now Delhi should not have cancelled the order of allotment of land in the village Raikot made in favour of the appellants in the year 1949 and instead allotted to them land in Karodian in substitution of.
+MISTRAL-7BmiddleThe appellants denied the encroachment and argued that the suit was barred by limitation as the respondents had knowledge of the encroachment in 1932, during a survey by the Department of Mines.
+MISTRAL-7BlastThe trial judge found on evidence that the proceedings in 1932 had nothing to do with the matter, held that article 48 of the Limitation Act applied to the suit and that the appellants had failed to prove that the respondents had knowledge of the sinking of the quarries and pits in the
+ModelPositionSentenceScoreBARTmiddleThe appellants who are admittedly displaced persons from West Pakistan were granted quasi permanent allotment of 24 standard acres and 15 3/4 units in the village of Raikot in Ludhiana District in 1949.0.4765BARTlastTheir father Sardar Nand Singh who was 42 330 found entitled to quasi Permanent allotment of 40 standard acres and 5 1/4 units of land was given quasipermanent allotment in another village named Humbran in the same district.0.4546LEDmiddleIt is true that under section 10 of the Act and Section 12(1) of the Act which was passed by the High Court dated November 8, 1951, the appellants were entitled to apply as far as they could be located within the jurisdiction of the Government of Punjab.0.1795LEDmiddleOn the other hand, it is not clear whether the appellants have any right to apply for relief from the burden of proof.0.1582LEDmiddleIf so, we can only say that the matter has been referred to the High Court whereupon there is no objection to the applicability of the law.0.1775LEDmiddleWe cannot accept the arguments made by Mr. Achhruram at this stage.0.0777LEDlastHe contends that he had no intention of applying for relief due to the circumstances of the case.0.1747PEGASUSfirstThe Punjab and Haryana High Court has ruled that the Deputy Custodian General, Evacuee Property, Now Delhi should not have cancelled the order of allotment of land in the village Raikot made in favour of the appellants in the year 1949 and instead allotted to them land in Karodian in substitution of.0.2488MISTRAL-7BmiddleThe appellants denied the encroachment and argued that the suit was barred by limitation as the respondents had knowledge of the encroachment in 1932, during a survey by the Department of Mines.0.1357MISTRAL-7BlastThe trial judge found on evidence that the proceedings in 1932 had nothing to do with the matter, held that article 48 of the Limitation Act applied to the suit and that the appellants had failed to prove that the respondents had knowledge of the sinking of the quarries and pits in the0.3132FALCON-7BmiddleThe court also held that the burden of proof in the former sense was always on the plaintiff and never shifted.
+FALCON-7BlastThe court further held that the map is a part of the lease and that it is not permissible to ignore it and reconstruct the boundary with reference to the revenue records.
+can i take this as hall sent and give i/p to hall mit methods?
+
+LED — First sentence hallucinated:
+"The Court of Appeal held that the appellants were not entitled to any compensation for their misappropriation of property."
+Score: 0.1220
+
+PEGASUS — First sentence hallucinated:
+"The Punjab and Haryana High Court has ruled that the Deputy Custodian General, Evacuee Property, Now Delhi should not have cancelled the order of allotment of land in the village Raikot made in favour of the appellants in the year 1949."
+
+
+MISTRAL-7B — First sentence hallucinated:
+"In this case, Daulatram Rameshwarlal, a firm registered under the Indian Partnership Act, claimed exemption from Sales Tax on FOB contracts for sales of cotton and castor oil."
+
+FALCON-7B — First sentence hallucinated:
+"The judgment of the Court was delivered by DAS GUPTA J."
