@@ -1,4 +1,0 @@
-Sentence Position,Sentence,NLI Label,Confidence,Hallucinated,Regenerated
-1,1.,contradiction,0.593,True,False
-2,An appeal was filed by special leave to the Supreme Court of India from a judgment and order of the Deputy Custodian General of Evacuee Property in Now Delhi.,entailment,0.596,True,False
-3,2,contradiction,0.571,True,False
