@@ -1,0 +1,10 @@
+VERITAS-MISTRAL7B CERTIFICATE (Positional Role Partitioning)
+====================================================================
+judgments processed         : 100
+judgments skipped (empty)   : 0
+generator                   : mistralai/Mistral-7B-Instruct-v0.3
+positional mitigation       : First(top_k=2) < Middle(top_k=3,NLI>=0.40) < Last(top_k=4,NLI>=0.50)
+avg FAITHFULNESS            : 0.4387 -> 0.9525   (hallucination mitigated)
+avg COVERAGE                : 0.4296 -> 0.4869   (omission handled)
+total hallucinations fixed  : 1478
+total omissions added       : 400
