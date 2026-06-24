@@ -1,8 +1,0 @@
-GENERATED SUMMARY
-=================
-
-[1]                                      "judgment": "Appeal No. 101 of 1959.\nAppeal by special leave from the judgment and order dated November 8, 1957, of the Deputy Custodian General
-
-TRUE Score: 0.2290
-Hallucination Score: 0.7710
-Hallucination Rate: 77.10%
