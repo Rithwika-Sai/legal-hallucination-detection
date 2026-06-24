@@ -1,8 +1,0 @@
-GENERATED SUMMARY
-=================
-
-The appellant filed a writ petition under Article 32 of the Constitution of India. The respondent objected on jurisdictional grounds. The Supreme Court dismissed the appeal underSection 100 of the Code of Civil Procedure.
-
-SummaC Score: 0.9548
-Hallucination Score: 0.0452
-Hallucination Rate: 4.52%
